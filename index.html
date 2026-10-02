@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Universo</title>
+<link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#15181d">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+<style>
+:root{--bg:#15181d;--card:#1e2229;--line:#343b46;--tx:#e9e6df;--mut:#9aa3af;--ac:#8fb3d1;--bad:#d9605a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.5 system-ui,sans-serif}
+h1,h2{font-family:"Iowan Old Style",Georgia,serif;font-weight:600;margin:0}
+header{display:flex;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid var(--line)}
+header h1{flex:1;font-size:1.6rem}
+main{max-width:760px;margin:0 auto;padding:16px}
+button,.btn{min-height:44px;padding:0 16px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--tx);font:inherit;cursor:pointer}
+button.pri{background:var(--ac);color:#10151a;border-color:var(--ac);font-weight:600}
+button.bad{color:var(--bad)}
+button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
+input,textarea{width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--tx);font:inherit}
+textarea{min-height:50vh;font-family:"Iowan Old Style",Georgia,serif;line-height:1.7}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+.chips button{min-height:36px;padding:0 12px}.chips .on{border-color:var(--ac);color:var(--ac)}
+.item{display:block;width:100%;text-align:left;padding:12px 14px;margin:8px 0;height:auto}
+.item small{color:var(--mut);display:block}
+.dot{color:var(--ac)}
+.empty{color:var(--mut);text-align:center;padding:40px 10px}
+dialog{background:var(--card);color:var(--tx);border:1px solid var(--line);border-radius:12px;max-width:420px;width:90%}
+dialog::backdrop{background:#000a}
+img.pv{max-width:100%;border-radius:8px}audio{width:100%}
+.hide{display:none}
+</style></head><body>
+<header><h1>Universo</h1><button id="imp">Importar backup</button><button id="sair">Sair</button></header>
+<main>
+<section id="list">
+ <input id="q" type="search" placeholder="Buscar no universo">
+ <div class="row chips" id="chips"></div>
+ <div class="row"><button class="pri" id="add">Adicionar material</button></div>
+ <div id="items"></div>
+</section>
+<section id="edit" class="hide">
+ <div class="row"><button id="back">Voltar</button><button class="bad" id="del">Apagar</button></div>
+ <input id="t" placeholder="Título"><div id="extra"></div>
+ <textarea id="x" placeholder="Texto, anotações, transcrição"></textarea>
+ <input id="tags" placeholder="Etiquetas (personagem, lugar, capítulo…) separadas por vírgula">
+</section>
+<section id="bye" class="hide"><div class="empty"><h2>Tudo salvo</h2><p>Você já pode fechar o app.</p><button id="volta">Voltar ao app</button></div></section>
+</main>
+
+<dialog id="dAdd"><h2>Adicionar</h2><div class="row">
+ <button data-a="nota">Nota nova</button><button data-a="doc">Word (.docx)</button>
+ <button data-a="img">Imagem</button><button data-a="audio">Áudio</button><button data-a="link">Link</button>
+ <button id="c1">Cancelar</button></div></dialog>
+<dialog id="dSair"><h2>Quer realmente sair?</h2><p>Se sim, você escolhe onde salvar.</p>
+ <div class="row"><button id="s1">Continuar no app</button><button class="pri" id="s2">Sair</button></div></dialog>
+<dialog id="dSave"><h2>Onde salvar?</h2><p id="resumo"></p>
+ <div class="row"><button class="pri" id="sv">Salvar backup e escolher destino</button><button id="sn">Sair sem salvar</button><button id="sc">Cancelar</button></div></dialog>
+<input type="file" id="fi" class="hide" multiple>
+
+<script>
+const $=s=>document.querySelector(s),T={nota:'Nota',doc:'Documento',img:'Imagem',audio:'Áudio',link:'Link'};
+const db=new Promise(r=>{const q=indexedDB.open('universo',1);q.onupgradeneeded=()=>q.result.createObjectStore('s');q.onsuccess=()=>r(q.result)});
+const put=async(k,v)=>(await db).transaction('s','readwrite').objectStore('s').put(v,k);
+const get=async k=>{const d=await db;return new Promise(r=>{const q=d.transaction('s').objectStore('s').get(k);q.onsuccess=()=>r(q.result)})};
+let S={items:[],base:{}},cur=null,flt='todos';
+const uid=()=>Math.random().toString(36).slice(2,10);
+const save=()=>put('s',S);
+const show=v=>['list','edit','bye'].forEach(i=>$('#'+i).classList.toggle('hide',i!==v));
+const dirty=i=>S.base[i.id]===undefined||i.updatedAt>S.base[i.id];
+function mk(type,title,extra={}){const it={id:uid(),type,title,text:'',tags:'',updatedAt:Date.now(),...extra};S.items.unshift(it);save();return it}
+function render(){
+ const q=$('#q').value.toLowerCase();
+ $('#chips').innerHTML=['todos',...Object.keys(T)].map(k=>`<button class="${k===flt?'on':''}" data-f="${k}">${k=='todos'?'Todos':T[k]}</button>`).join('');
+ const L=S.items.filter(i=>(flt=='todos'||i.type==flt)&&(i.title+i.text+i.tags).toLowerCase().includes(q));
+ $('#items').innerHTML=L.length?L.map(i=>`<button class="item" data-id="${i.id}">${dirty(i)?'<span class="dot">● </span>':''}${i.title||'Sem título'}<small>${T[i.type]}${i.tags?' · '+i.tags:''}</small></button>`).join(''):'<div class="empty">Nada aqui ainda. Adicione sua primeira nota ou importe um arquivo Word.</div>';
+}
+function open(id){
+ cur=S.items.find(i=>i.id==id);show('edit');
+ $('#t').value=cur.title;$('#x').value=cur.text;$('#tags').value=cur.tags;
+ $('#extra').innerHTML=cur.type=='img'?`<img class="pv" src="${cur.data}">`:cur.type=='audio'?`<audio controls src="${cur.data}"></audio>`:cur.type=='link'?`<p><a style="color:var(--ac)" href="${cur.url}" target="_blank" rel="noopener">${cur.url}</a></p>`:'';
+}
+const edit=()=>{cur.title=$('#t').value;cur.text=$('#x').value;cur.tags=$('#tags').value;cur.updatedAt=Date.now();save()};
+['#t','#x','#tags'].forEach(s=>$(s).addEventListener('input',edit));
+$('#back').onclick=()=>{show('list');render()};
+$('#del').onclick=()=>{if(confirm('Apagar este item?')){S.items=S.items.filter(i=>i!==cur);save();show('list');render()}};
+$('#q').oninput=render;
+$('#chips').onclick=e=>{if(e.target.dataset.f){flt=e.target.dataset.f;render()}};
+$('#items').onclick=e=>{const b=e.target.closest('.item');if(b)open(b.dataset.id)};
+$('#add').onclick=()=>$('#dAdd').showModal();$('#c1').onclick=()=>$('#dAdd').close();
+const ACC={doc:'.docx',img:'image/*',audio:'audio/*'};let kind;
+$('#dAdd').onclick=e=>{const a=e.target.dataset.a;if(!a)return;$('#dAdd').close();
+ if(a=='nota'){open(mk('nota','').id)}
+ else if(a=='link'){const u=prompt('Endereço do link:');if(u){open(mk('link',u,{url:u}).id)}}
+ else{kind=a;$('#fi').accept=ACC[a];$('#fi').value='';$('#fi').click()}};
+const rd=f=>new Promise(r=>{const x=new FileReader();x.onload=()=>r(x.result);x.readAsDataURL(f)});
+async function small(f){const u=await rd(f),im=new Image();im.src=u;await im.decode();const k=Math.min(1,1600/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=im.width*k;c.height=im.height*k;c.getContext('2d').drawImage(im,0,0,c.width,c.height);return c.toDataURL('image/jpeg',.85)}
+$('#fi').onchange=async e=>{
+ if(e.target.dataset.imp)return;
+ for(const f of e.target.files){const n=f.name.replace(/\.[^.]+$/,'');
+  try{
+   if(kind=='doc'){const r=await mammoth.extractRawText({arrayBuffer:await f.arrayBuffer()});mk('doc',n,{text:r.value})}
+   else if(kind=='img')mk('img',n,{data:await small(f)});
+   else mk('audio',n,{data:await rd(f),text:'(transcrição ainda não feita)'});
+  }catch(err){alert('Não consegui ler "'+f.name+'". Use arquivos .docx (Word novo).')}}
+ render()};
+function pend(){const n=S.items.filter(i=>S.base[i.id]===undefined).length,m=S.items.filter(i=>S.base[i.id]!==undefined&&i.updatedAt>S.base[i.id]).length;return[n,m]}
+$('#sair').onclick=()=>$('#dSair').showModal();$('#s1').onclick=()=>$('#dSair').close();
+$('#s2').onclick=()=>{$('#dSair').close();const[n,m]=pend();$('#resumo').textContent=n+m?`Novos: ${n}. Alterados: ${m}.`:'Nada novo desde o último backup.';$('#dSave').showModal()};
+$('#sc').onclick=()=>$('#dSave').close();
+$('#sn').onclick=()=>{$('#dSave').close();show('bye')};
+$('#sv').onclick=async()=>{
+ const f=new File([JSON.stringify({v:1,items:S.items})],'universo-backup.json',{type:'application/json'});
+ try{if(navigator.canShare&&navigator.canShare({files:[f]}))await navigator.share({files:[f],title:'Backup do Universo'});
+  else{const a=document.createElement('a');a.href=URL.createObjectURL(f);a.download=f.name;a.click()}}
+ catch(err){return}
+ S.items.forEach(i=>S.base[i.id]=i.updatedAt);await save();$('#dSave').close();show('bye')};
+$('#volta').onclick=()=>{show('list');render()};
+$('#imp').onclick=()=>{const i=document.createElement('input');i.type='file';i.accept='.json';i.onchange=async()=>{
+ try{const d=JSON.parse(await i.files[0].text());let k=0;
+  for(const n of d.items){const o=S.items.find(x=>x.id==n.id);if(!o){S.items.push(n);S.base[n.id]=n.updatedAt;k++}else if(n.updatedAt>o.updatedAt){Object.assign(o,n);S.base[n.id]=n.updatedAt;k++}}
+  await save();render();alert(k+' item(ns) novos ou atualizados.')}catch(err){alert('Arquivo de backup inválido.')}};i.click()};
+addEventListener('beforeunload',e=>{if(pend()[0]+pend()[1]){e.preventDefault();e.returnValue=''}});
+get('s').then(v=>{if(v)S=v;render()});
+if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js');
+</script></body></html>
