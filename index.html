@@ -40,6 +40,11 @@ img.pv{max-width:100%;border-radius:8px}audio{width:100%}
 .hd button{min-height:28px;padding:0 10px}
 .cd textarea{min-height:90px;border:0;background:transparent;line-height:1.4;font-family:inherit}
 .cd.g textarea{min-height:40px}
+#cv .cd{display:flex;flex-direction:column;overflow:hidden}
+.bd{flex:1;min-height:0;overflow:auto}
+.cd textarea,.cd.g textarea{min-height:0;height:100%;resize:none}
+.hd span{flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.rz{position:absolute;right:0;bottom:0;width:30px;height:30px;touch-action:none;cursor:nwse-resize;background:linear-gradient(135deg,transparent 55%,var(--mut) 55%,var(--mut) 62%,transparent 62%,transparent 75%,var(--mut) 75%,var(--mut) 82%,transparent 82%);opacity:.7}
 </style></head><body>
 <header><h1>Universo</h1><button id="imp">Importar backup</button><button id="sair">Sair</button></header>
 <main>
@@ -60,9 +65,10 @@ img.pv{max-width:100%;border-radius:8px}audio{width:100%}
 
 <section id="board" class="hide">
  <div id="bt"><button id="bback">Voltar</button><input id="bn" placeholder="Nome do quadro">
-  <button id="bnota">+ Nota</button><button id="bgrupo">+ Grupo</button><button id="bref">+ Do universo</button><button class="bad" id="bdel">Apagar</button></div>
+  <button id="bnota">+ Nota</button><button id="bgrupo">+ Grupo</button><button id="bref">+ Adicionar</button><button class="bad" id="bdel">Apagar</button></div>
  <div id="sc"><div id="cv"></div></div>
 </section>
+<dialog id="dAddB"><h2>Adicionar ao quadro</h2><div class="row"><button data-a="img">Imagem</button><button data-a="doc">Word (.docx)</button><button data-a="audio">Áudio</button><button data-a="link">Link</button><button data-a="ref">Do universo</button><button id="cB">Cancelar</button></div></dialog>
 <dialog id="dPick"><h2>Adicionar do universo</h2><div id="pl"></div><div class="row"><button id="pc">Cancelar</button></div></dialog>
 <dialog id="dAdd"><h2>Adicionar</h2><div class="row">
  <button data-a="quadro">Quadro novo</button><button data-a="nota">Nota nova</button><button data-a="doc">Word (.docx)</button>
@@ -105,23 +111,24 @@ $('#q').oninput=render;
 $('#chips').onclick=e=>{if(e.target.dataset.f){flt=e.target.dataset.f;render()}};
 $('#items').onclick=e=>{const b=e.target.closest('.item');if(b)open(b.dataset.id)};
 $('#add').onclick=()=>$('#dAdd').showModal();$('#c1').onclick=()=>$('#dAdd').close();
-const ACC={doc:'.docx',img:'image/*',audio:'audio/*'};let kind;
+const ACC={doc:'.docx',img:'image/*',audio:'audio/*'};let kind,inB=false;
 $('#dAdd').onclick=e=>{const a=e.target.dataset.a;if(!a)return;$('#dAdd').close();
  if(a=='quadro'){open(mk('quadro','Novo quadro').id)}
  else if(a=='nota'){open(mk('nota','').id)}
  else if(a=='link'){const u=prompt('Endereço do link:');if(u){open(mk('link',u,{url:u}).id)}}
- else{kind=a;$('#fi').accept=ACC[a];$('#fi').value='';$('#fi').click()}};
+ else{kind=a;inB=false;$('#fi').accept=ACC[a];$('#fi').value='';$('#fi').click()}};
 const rd=f=>new Promise(r=>{const x=new FileReader();x.onload=()=>r(x.result);x.readAsDataURL(f)});
-async function small(f){const u=await rd(f),im=new Image();im.src=u;await im.decode();const k=Math.min(1,1600/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=im.width*k;c.height=im.height*k;c.getContext('2d').drawImage(im,0,0,c.width,c.height);return c.toDataURL('image/jpeg',.85)}
+async function shrink(src,M){const im=new Image();im.src=src;await im.decode();const k=Math.min(1,M/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=im.width*k;c.height=im.height*k;c.getContext('2d').drawImage(im,0,0,c.width,c.height);return c.toDataURL('image/jpeg',.85)}
+async function small(f,M=1600){return shrink(await rd(f),M)}
 $('#fi').onchange=async e=>{
  if(e.target.dataset.imp)return;
- for(const f of e.target.files){const n=f.name.replace(/\.[^.]+$/,'');
+ const n0=S.items.length;for(const f of e.target.files){const n=f.name.replace(/\.[^.]+$/,'');
   try{
    if(kind=='doc'){const r=await mammoth.extractRawText({arrayBuffer:await f.arrayBuffer()});mk('doc',n,{text:r.value})}
-   else if(kind=='img')mk('img',n,{data:await small(f)});
+   else if(kind=='img')mk('img',n,{data:await small(f),thumb:await small(f,360)});
    else mk('audio',n,{data:await rd(f),text:'(transcrição ainda não feita)'});
   }catch(err){alert('Não consegui ler "'+f.name+'". Use arquivos .docx (Word novo).')}}
- render()};
+ if(inB)S.items.slice(0,S.items.length-n0).reverse().forEach(it=>addC('ref',it.id));else render()};
 function pend(){const n=S.items.filter(i=>S.base[i.id]===undefined).length,m=S.items.filter(i=>S.base[i.id]!==undefined&&i.updatedAt>S.base[i.id]).length;return[n,m]}
 $('#sair').onclick=()=>$('#dSair').showModal();$('#s1').onclick=()=>$('#dSair').close();
 $('#s2').onclick=()=>{$('#dSair').close();const[n,m]=pend();$('#resumo').textContent=n+m?`Novos: ${n}. Alterados: ${m}.`:'Nada novo desde o último backup.';$('#dSave').showModal()};
@@ -143,25 +150,41 @@ const esc=t=>String(t).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;',
 function goBack(){if(nav.length)openB(nav.pop());else{show('list');render()}}
 function openB(id){B=S.items.find(i=>i.id==id);B.cards=B.cards||[];show('board');$('#bn').value=B.title;drawB()}
 const tb=()=>{B.updatedAt=Date.now();save()};
+const dim=c=>[c.w||(c.kind=='g'?440:220),c.h||(c.kind=='g'?320:c.kind=='ref'?110:150)];
+async function mkThumb(it){try{it.thumb=await shrink(it.data,360)}catch(err){it.thumb=it.data}save();if(B)drawB()}
 function drawB(){$('#cv').innerHTML=B.cards.map(c=>{
- const r=c.ref&&S.items.find(i=>i.id==c.ref),g=c.kind=='g';
- const body=c.kind=='ref'?`<div style="padding:10px"><b>${r?esc(r.title||'Sem título'):'(item apagado)'}</b><small style="display:block;color:var(--mut)">${r?T[r.type]:''}</small>${r?`<button data-o="${c.id}" style="margin-top:8px">Abrir</button>`:''}</div>`
-  :`<textarea data-t="${c.id}" placeholder="${g?'Nome do grupo':'Escreva aqui'}">${esc(c.text||'')}</textarea>`;
- return `<div class="cd${g?' g':''}" data-id="${c.id}" style="left:${c.x}px;top:${c.y}px"><div class="hd" data-d="${c.id}"><span>${g?'Grupo':c.kind=='ref'?'Do universo':'Nota'}</span><button data-x="${c.id}">×</button></div>${body}</div>`}).join('')}
-const addC=(kind,ref)=>{const s=$('#sc'),n=B.cards.length%6*24;B.cards.push({id:uid(),kind,ref,text:'',x:s.scrollLeft+30+n,y:s.scrollTop+30+n});tb();drawB()};
+ const r=c.ref&&S.items.find(i=>i.id==c.ref),g=c.kind=='g',[w,h]=dim(c);
+ if(r&&r.type=='img'&&!r.thumb)mkThumb(r);
+ let body;
+ if(c.kind=='ref')body=!r?'<div style="padding:10px;color:var(--mut)">(item apagado)</div>':r.type=='img'?`<img data-o="${c.id}" src="${r.thumb||''}" alt="${esc(r.title||'')}" style="width:100%;height:100%;object-fit:contain;display:block">`:`<div style="padding:10px"><small style="color:var(--mut)">${T[r.type]}</small><div style="color:var(--mut);margin:4px 0 8px;overflow-wrap:anywhere">${esc((r.type=='link'?r.url:r.text||'').slice(0,140))}</div><button data-o="${c.id}">Abrir</button></div>`;
+ else body=`<textarea data-t="${c.id}" placeholder="${g?'Nome do grupo':'Escreva aqui'}">${esc(c.text||'')}</textarea>`;
+ return `<div class="cd${g?' g':''}" data-id="${c.id}" style="left:${c.x}px;top:${c.y}px;width:${w}px;height:${h}px"><div class="hd" data-d="${c.id}"><span>${c.kind=='ref'?(r?esc(r.title||T[r.type]):'Do universo'):g?'Grupo':'Nota'}</span><button data-x="${c.id}">×</button></div><div class="bd">${body}</div><div class="rz" data-r="${c.id}"></div></div>`}).join('')}
+const addC=(kind,ref)=>{const s=$('#sc'),n=B.cards.length%6*24,r=ref&&S.items.find(i=>i.id==ref),h=kind=='g'?320:kind=='ref'?(r&&r.type=='img'?190:110):150;
+ B.cards.push({id:uid(),kind,ref,text:'',w:kind=='g'?440:220,h,x:s.scrollLeft+30+n,y:s.scrollTop+30+n});tb();drawB()};
 $('#cv').addEventListener('input',e=>{const id=e.target.dataset.t;if(id){B.cards.find(c=>c.id==id).text=e.target.value;tb()}});
 $('#cv').addEventListener('click',e=>{const d=e.target.dataset;
  if(d.x){B.cards=B.cards.filter(c=>c.id!=d.x);tb();drawB()}
  if(d.o){const c=B.cards.find(c=>c.id==d.o);nav.push(B.id);open(c.ref)}});
-$('#cv').addEventListener('pointerdown',e=>{const h=e.target.closest('.hd');if(!h||e.target.dataset.x)return;
+$('#cv').addEventListener('pointerdown',e=>{
+ const z=e.target.closest('.rz');
+ if(z){const c=B.cards.find(c=>c.id==z.dataset.r),[w0,h0]=dim(c),sx=e.clientX,sy=e.clientY,el=z.parentElement;
+  z.setPointerCapture(e.pointerId);
+  z.onpointermove=m=>{c.w=Math.max(120,w0+m.clientX-sx);c.h=Math.max(80,h0+m.clientY-sy);el.style.width=c.w+'px';el.style.height=c.h+'px'};
+  z.onpointerup=()=>{z.onpointermove=z.onpointerup=null;tb()};return}
+ const h=e.target.closest('.hd');if(!h||e.target.dataset.x)return;
  const c=B.cards.find(c=>c.id==h.dataset.d);let kids=[];
- if(c.kind=='g')kids=B.cards.filter(k=>k!==c&&k.kind!='g'&&k.x+110>c.x&&k.x+110<c.x+440&&k.y+60>c.y&&k.y+60<c.y+320);
+ if(c.kind=='g'){const[gw,gh]=dim(c);kids=B.cards.filter(k=>{const[kw,kh]=dim(k),cx=k.x+kw/2,cy=k.y+kh/2;return k!==c&&k.kind!='g'&&cx>c.x&&cx<c.x+gw&&cy>c.y&&cy<c.y+gh})}
  const sx=e.clientX,sy=e.clientY,o=[c,...kids].map(k=>[k,k.x,k.y]);
  h.setPointerCapture(e.pointerId);
  h.onpointermove=m=>o.forEach(([k,x,y])=>{k.x=Math.max(0,x+m.clientX-sx);k.y=Math.max(0,y+m.clientY-sy);const n=$('#cv').querySelector(`[data-id="${k.id}"]`);n.style.left=k.x+'px';n.style.top=k.y+'px'});
  h.onpointerup=()=>{h.onpointermove=h.onpointerup=null;tb()}});
 $('#bnota').onclick=()=>addC('nota');$('#bgrupo').onclick=()=>addC('g');
-$('#bref').onclick=()=>{$('#pl').innerHTML=S.items.filter(i=>i!==B).map(i=>`<button class="item" data-p="${i.id}">${esc(i.title||'Sem título')}<small>${T[i.type]}</small></button>`).join('')||'<p>A biblioteca ainda está vazia.</p>';$('#dPick').showModal()};
+function pickRef(){$('#pl').innerHTML=S.items.filter(i=>i!==B).map(i=>`<button class="item" data-p="${i.id}">${esc(i.title||'Sem título')}<small>${T[i.type]}</small></button>`).join('')||'<p>A biblioteca ainda está vazia.</p>';$('#dPick').showModal()}
+$('#bref').onclick=()=>$('#dAddB').showModal();$('#cB').onclick=()=>$('#dAddB').close();
+$('#dAddB').onclick=e=>{const a=e.target.dataset.a;if(!a)return;$('#dAddB').close();
+ if(a=='ref')return pickRef();
+ if(a=='link'){const u=prompt('Endereço do link:');if(u)addC('ref',mk('link',u,{url:u}).id);return}
+ kind=a;inB=true;$('#fi').accept=ACC[a];$('#fi').value='';$('#fi').click()};
 $('#pl').onclick=e=>{const b=e.target.closest('.item');if(b){$('#dPick').close();addC('ref',b.dataset.p)}};
 $('#pc').onclick=()=>$('#dPick').close();
 $('#bn').oninput=e=>{B.title=e.target.value;tb()};
