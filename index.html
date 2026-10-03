@@ -48,8 +48,12 @@ img.pv{max-width:100%;border-radius:8px}audio{width:100%}
 .irow{display:flex;gap:8px;align-items:stretch;margin:8px 0}
 .irow .item{margin:0;flex:1;width:auto}
 .irow .bad{min-width:76px;height:auto}
+#tabs{display:flex;gap:8px;padding:8px 16px;border-bottom:1px solid var(--line)}
+#tabs button{flex:1}#tabs .on{border-color:var(--ac);color:var(--ac)}
+#mnote{min-height:45vh;font:.9rem/1.5 ui-monospace,monospace}
 </style></head><body>
-<header><h1>Universo</h1><button id="exp">Exportar p/ Claude</button><button id="cola">Colar do Claude</button><button id="imp">Importar backup</button><button id="sair">Sair</button></header>
+<header><h1>Universo</h1><button id="imp">Importar backup</button><button id="sair">Sair</button></header>
+<nav id="tabs"><button data-tab="list" class="on">Biblioteca</button><button data-tab="meet">Reunião</button></nav>
 <main>
 <section id="list">
  <input id="q" type="search" placeholder="Buscar no universo">
@@ -62,6 +66,14 @@ img.pv{max-width:100%;border-radius:8px}audio{width:100%}
  <input id="t" placeholder="Título"><div id="extra"></div>
  <textarea id="x" placeholder="Texto, anotações, transcrição"></textarea>
  <input id="tags" placeholder="Etiquetas (personagem, lugar, capítulo…) separadas por vírgula">
+</section>
+<section id="meet" class="hide">
+ <h2>Reunião</h2>
+ <p style="color:var(--mut)">Nota somente leitura com todo o seu universo até agora. Copie e cole no Claude.</p>
+ <div class="row"><button class="pri" id="mcopy">Copiar nota</button><button id="exp">Enviar como arquivo</button></div>
+ <textarea id="mnote" readonly aria-label="Nota da reunião, somente leitura"></textarea>
+ <h2 style="margin-top:20px">Trazer de volta</h2>
+ <div class="row"><button id="cola">Colar resposta do Claude</button><button id="mhtml">Importar arquivo HTML</button></div>
 </section>
 <section id="bye" class="hide"><div class="empty"><h2>Tudo salvo</h2><p>Você já pode fechar o app.</p><button id="volta">Voltar ao app</button></div></section>
 </main>
@@ -85,14 +97,14 @@ img.pv{max-width:100%;border-radius:8px}audio{width:100%}
 <input type="file" id="fi" class="hide" multiple>
 
 <script>
-const $=s=>document.querySelector(s),T={quadro:'Quadro',nota:'Nota',doc:'Documento',img:'Imagem',audio:'Áudio',link:'Link'};
+const $=s=>document.querySelector(s),T={html:'HTML',quadro:'Quadro',nota:'Nota',doc:'Documento',img:'Imagem',audio:'Áudio',link:'Link'};
 const db=new Promise(r=>{const q=indexedDB.open('universo',1);q.onupgradeneeded=()=>q.result.createObjectStore('s');q.onsuccess=()=>r(q.result)});
 const put=async(k,v)=>(await db).transaction('s','readwrite').objectStore('s').put(v,k);
 const get=async k=>{const d=await db;return new Promise(r=>{const q=d.transaction('s').objectStore('s').get(k);q.onsuccess=()=>r(q.result)})};
 let S={items:[],base:{}},cur=null,flt='todos';
 const uid=()=>Math.random().toString(36).slice(2,10);
 const save=()=>put('s',S);
-const show=v=>['list','edit','bye','board'].forEach(i=>$('#'+i).classList.toggle('hide',i!==v));
+const show=v=>{['list','edit','bye','board','meet'].forEach(i=>$('#'+i).classList.toggle('hide',i!==v));document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('on',b.dataset.tab==(v=='meet'?'meet':'list')))};
 const dirty=i=>S.base[i.id]===undefined||i.updatedAt>S.base[i.id];
 function mk(type,title,extra={}){const it={id:uid(),type,title,text:'',tags:'',updatedAt:Date.now(),...extra};S.items.unshift(it);save();return it}
 function render(){
@@ -105,7 +117,7 @@ function open(id){
  const it=S.items.find(i=>i.id==id);if(it.type=='quadro')return openB(id);
  cur=it;show('edit');
  $('#t').value=cur.title;$('#x').value=cur.text;$('#tags').value=cur.tags;
- $('#extra').innerHTML=cur.type=='img'?`<img class="pv" src="${cur.data}">`:cur.type=='audio'?`<audio controls src="${cur.data}"></audio>`:cur.type=='link'?`<p><a style="color:var(--ac)" href="${cur.url}" target="_blank" rel="noopener">${cur.url}</a></p>`:'';
+ $('#extra').innerHTML=cur.type=='img'?`<img class="pv" src="${cur.data}">`:cur.type=='audio'?`<audio controls src="${cur.data}"></audio>`:cur.type=='html'?'<div class="row"><button id="prev">Visualizar</button></div><div id="pvw"></div>':cur.type=='link'?`<p><a style="color:var(--ac)" href="${cur.url}" target="_blank" rel="noopener">${cur.url}</a></p>`:'';
 }
 const edit=()=>{cur.title=$('#t').value;cur.text=$('#x').value;cur.tags=$('#tags').value;cur.updatedAt=Date.now();save()};
 ['#t','#x','#tags'].forEach(s=>$(s).addEventListener('input',edit));
@@ -131,10 +143,11 @@ $('#fi').onchange=async e=>{
  const n0=S.items.length;for(const f of e.target.files){const n=f.name.replace(/\.[^.]+$/,'');
   try{
    if(kind=='doc'){const r=await mammoth.extractRawText({arrayBuffer:await f.arrayBuffer()});mk('doc',n,{text:r.value})}
+   else if(kind=='html')mk('html',n,{text:await f.text()});
    else if(kind=='img')mk('img',n,{data:await small(f),thumb:await small(f,360)});
    else mk('audio',n,{data:await rd(f),text:'(transcrição ainda não feita)'});
   }catch(err){alert('Não consegui ler "'+f.name+'". Use arquivos .docx (Word novo).')}}
- if(inB)S.items.slice(0,S.items.length-n0).reverse().forEach(it=>addC('ref',it.id));else render()};
+ if(inB)S.items.slice(0,S.items.length-n0).reverse().forEach(it=>addC('ref',it.id));else{render();if(kind=='html')tab('list')}};
 function pend(){const n=S.items.filter(i=>S.base[i.id]===undefined).length,m=S.items.filter(i=>S.base[i.id]!==undefined&&i.updatedAt>S.base[i.id]).length;return[n,m]}
 $('#sair').onclick=()=>$('#dSair').showModal();$('#s1').onclick=()=>$('#dSair').close();
 $('#s2').onclick=()=>{$('#dSair').close();const[n,m]=pend();$('#resumo').textContent=n+m?`Novos: ${n}. Alterados: ${m}.`:'Nada novo desde o último backup.';$('#dSave').showModal()};
@@ -205,13 +218,19 @@ function bible(){
   if(i.type=='img')L.push('(imagem; não incluída neste arquivo)');
   if(i.type=='audio')L.push('(áudio; não incluído neste arquivo)');
   if(i.type=='quadro')(i.cards||[]).forEach(c=>{const r=c.ref&&S.items.find(x=>x.id==c.ref);L.push('- '+(c.kind=='g'?'Grupo: '+(c.text||''):c.kind=='ref'?'Item: '+(r?r.title:'(apagado)'):'Nota: '+(c.text||'')))});
-  if(i.text)L.push('',i.text);
+  if(i.text)L.push('',i.type=='html'?'```html\n'+i.text+'\n```':i.text);
   L.push('')}
  return L.join('\n')}
 async function sendFile(f,title){try{if(navigator.canShare&&navigator.canShare({files:[f]}))await navigator.share({files:[f],title});else{const a=document.createElement('a');a.href=URL.createObjectURL(f);a.download=f.name;a.click()}}catch(err){}}
-$('#exp').onclick=()=>sendFile(new File([bible()],'universo-biblia.md',{type:'text/markdown'}),'Bíblia do universo');
+$('#exp').onclick=()=>sendFile(new File([meetText()],'universo-reuniao.md',{type:'text/markdown'}),'Bíblia do universo');
 $('#cola').onclick=()=>$('#dPaste').showModal();$('#pcn').onclick=()=>$('#dPaste').close();
-$('#ps').onclick=()=>{const t=$('#pb').value.trim();if(!t)return;mk('nota',$('#pt').value||'Do Claude',{text:t,tags:'do-claude'});$('#pb').value=$('#pt').value='';$('#dPaste').close();show('list');render()};
+$('#ps').onclick=()=>{const t=$('#pb').value.trim();if(!t)return;mk(/^\s*(<!doctype html|<html)/i.test(t)?'html':'nota',$('#pt').value||'Do Claude',{text:t,tags:'do-claude'});$('#pb').value=$('#pt').value='';$('#dPaste').close();show('list');render()};
+function meetText(){return '=== INSTRUÇÕES PARA O CLAUDE ===\nResponda sempre normalmente ao que eu pedir.\nNo final de cada resposta, entregue um bloco copiável (em bloco de código) com o que ficou decidido ou criado, pronto para eu copiar e colar no app Universo.\nSe eu pedir algo em HTML, entregue um único arquivo HTML completo e autocontido, também em bloco de código.\n=== FIM DAS INSTRUÇÕES ===\n\n'+bible()}
+function tab(t){if(t=='meet')$('#mnote').value=meetText();show(t);if(t=='list')render()}
+$('#tabs').onclick=e=>{const t=e.target.dataset.tab;if(t)tab(t)};
+$('#mcopy').onclick=async()=>{const n=$('#mnote'),b=$('#mcopy');try{await navigator.clipboard.writeText(n.value)}catch(err){n.select();document.execCommand('copy')}b.textContent='Copiado!';setTimeout(()=>b.textContent='Copiar nota',1800)};
+$('#mhtml').onclick=()=>{kind='html';inB=false;$('#fi').accept='.html,.htm,text/html';$('#fi').value='';$('#fi').click()};
+$('#extra').onclick=e=>{if(e.target.id=='prev'){$('#pvw').innerHTML='<iframe sandbox="allow-scripts" style="width:100%;height:60vh;border:1px solid var(--line);border-radius:8px;background:#fff"></iframe>';$('#pvw').firstChild.srcdoc=cur.text}};
 addEventListener('beforeunload',e=>{if(pend()[0]+pend()[1]){e.preventDefault();e.returnValue=''}});
 get('s').then(v=>{if(v)S=v;render()});
 if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js');
