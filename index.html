@@ -28,6 +28,18 @@ dialog{background:var(--card);color:var(--tx);border:1px solid var(--line);borde
 dialog::backdrop{background:#000a}
 img.pv{max-width:100%;border-radius:8px}audio{width:100%}
 .hide{display:none}
+#board{position:fixed;inset:0;display:flex;flex-direction:column;background:var(--bg);z-index:5}
+#board.hide{display:none}
+#bt{display:flex;gap:8px;padding:8px;border-bottom:1px solid var(--line);flex-wrap:wrap;align-items:center}
+#bt input{flex:1;min-width:140px;width:auto}
+#sc{flex:1;overflow:auto}
+#cv{position:relative;width:3200px;height:2400px;background-image:radial-gradient(var(--line) 1px,transparent 1px);background-size:32px 32px}
+.cd{position:absolute;width:220px;background:var(--card);border:1px solid var(--line);border-radius:8px;z-index:1}
+.cd.g{width:440px;height:320px;background:#191e25;border-style:dashed;z-index:0}
+.hd{display:flex;justify-content:space-between;align-items:center;height:34px;padding:0 6px 0 10px;background:#262c35;border-radius:7px 7px 0 0;touch-action:none;cursor:grab;color:var(--mut);font-size:.85rem}
+.hd button{min-height:28px;padding:0 10px}
+.cd textarea{min-height:90px;border:0;background:transparent;line-height:1.4;font-family:inherit}
+.cd.g textarea{min-height:40px}
 </style></head><body>
 <header><h1>Universo</h1><button id="imp">Importar backup</button><button id="sair">Sair</button></header>
 <main>
@@ -46,8 +58,14 @@ img.pv{max-width:100%;border-radius:8px}audio{width:100%}
 <section id="bye" class="hide"><div class="empty"><h2>Tudo salvo</h2><p>Você já pode fechar o app.</p><button id="volta">Voltar ao app</button></div></section>
 </main>
 
+<section id="board" class="hide">
+ <div id="bt"><button id="bback">Voltar</button><input id="bn" placeholder="Nome do quadro">
+  <button id="bnota">+ Nota</button><button id="bgrupo">+ Grupo</button><button id="bref">+ Do universo</button><button class="bad" id="bdel">Apagar</button></div>
+ <div id="sc"><div id="cv"></div></div>
+</section>
+<dialog id="dPick"><h2>Adicionar do universo</h2><div id="pl"></div><div class="row"><button id="pc">Cancelar</button></div></dialog>
 <dialog id="dAdd"><h2>Adicionar</h2><div class="row">
- <button data-a="nota">Nota nova</button><button data-a="doc">Word (.docx)</button>
+ <button data-a="quadro">Quadro novo</button><button data-a="nota">Nota nova</button><button data-a="doc">Word (.docx)</button>
  <button data-a="img">Imagem</button><button data-a="audio">Áudio</button><button data-a="link">Link</button>
  <button id="c1">Cancelar</button></div></dialog>
 <dialog id="dSair"><h2>Quer realmente sair?</h2><p>Se sim, você escolhe onde salvar.</p>
@@ -57,14 +75,14 @@ img.pv{max-width:100%;border-radius:8px}audio{width:100%}
 <input type="file" id="fi" class="hide" multiple>
 
 <script>
-const $=s=>document.querySelector(s),T={nota:'Nota',doc:'Documento',img:'Imagem',audio:'Áudio',link:'Link'};
+const $=s=>document.querySelector(s),T={quadro:'Quadro',nota:'Nota',doc:'Documento',img:'Imagem',audio:'Áudio',link:'Link'};
 const db=new Promise(r=>{const q=indexedDB.open('universo',1);q.onupgradeneeded=()=>q.result.createObjectStore('s');q.onsuccess=()=>r(q.result)});
 const put=async(k,v)=>(await db).transaction('s','readwrite').objectStore('s').put(v,k);
 const get=async k=>{const d=await db;return new Promise(r=>{const q=d.transaction('s').objectStore('s').get(k);q.onsuccess=()=>r(q.result)})};
 let S={items:[],base:{}},cur=null,flt='todos';
 const uid=()=>Math.random().toString(36).slice(2,10);
 const save=()=>put('s',S);
-const show=v=>['list','edit','bye'].forEach(i=>$('#'+i).classList.toggle('hide',i!==v));
+const show=v=>['list','edit','bye','board'].forEach(i=>$('#'+i).classList.toggle('hide',i!==v));
 const dirty=i=>S.base[i.id]===undefined||i.updatedAt>S.base[i.id];
 function mk(type,title,extra={}){const it={id:uid(),type,title,text:'',tags:'',updatedAt:Date.now(),...extra};S.items.unshift(it);save();return it}
 function render(){
@@ -74,21 +92,23 @@ function render(){
  $('#items').innerHTML=L.length?L.map(i=>`<button class="item" data-id="${i.id}">${dirty(i)?'<span class="dot">● </span>':''}${i.title||'Sem título'}<small>${T[i.type]}${i.tags?' · '+i.tags:''}</small></button>`).join(''):'<div class="empty">Nada aqui ainda. Adicione sua primeira nota ou importe um arquivo Word.</div>';
 }
 function open(id){
- cur=S.items.find(i=>i.id==id);show('edit');
+ const it=S.items.find(i=>i.id==id);if(it.type=='quadro')return openB(id);
+ cur=it;show('edit');
  $('#t').value=cur.title;$('#x').value=cur.text;$('#tags').value=cur.tags;
  $('#extra').innerHTML=cur.type=='img'?`<img class="pv" src="${cur.data}">`:cur.type=='audio'?`<audio controls src="${cur.data}"></audio>`:cur.type=='link'?`<p><a style="color:var(--ac)" href="${cur.url}" target="_blank" rel="noopener">${cur.url}</a></p>`:'';
 }
 const edit=()=>{cur.title=$('#t').value;cur.text=$('#x').value;cur.tags=$('#tags').value;cur.updatedAt=Date.now();save()};
 ['#t','#x','#tags'].forEach(s=>$(s).addEventListener('input',edit));
-$('#back').onclick=()=>{show('list');render()};
-$('#del').onclick=()=>{if(confirm('Apagar este item?')){S.items=S.items.filter(i=>i!==cur);save();show('list');render()}};
+$('#back').onclick=()=>goBack();
+$('#del').onclick=()=>{if(confirm('Apagar este item?')){S.items=S.items.filter(i=>i!==cur);save();goBack()}};
 $('#q').oninput=render;
 $('#chips').onclick=e=>{if(e.target.dataset.f){flt=e.target.dataset.f;render()}};
 $('#items').onclick=e=>{const b=e.target.closest('.item');if(b)open(b.dataset.id)};
 $('#add').onclick=()=>$('#dAdd').showModal();$('#c1').onclick=()=>$('#dAdd').close();
 const ACC={doc:'.docx',img:'image/*',audio:'audio/*'};let kind;
 $('#dAdd').onclick=e=>{const a=e.target.dataset.a;if(!a)return;$('#dAdd').close();
- if(a=='nota'){open(mk('nota','').id)}
+ if(a=='quadro'){open(mk('quadro','Novo quadro').id)}
+ else if(a=='nota'){open(mk('nota','').id)}
  else if(a=='link'){const u=prompt('Endereço do link:');if(u){open(mk('link',u,{url:u}).id)}}
  else{kind=a;$('#fi').accept=ACC[a];$('#fi').value='';$('#fi').click()}};
 const rd=f=>new Promise(r=>{const x=new FileReader();x.onload=()=>r(x.result);x.readAsDataURL(f)});
@@ -118,6 +138,35 @@ $('#imp').onclick=()=>{const i=document.createElement('input');i.type='file';i.a
  try{const d=JSON.parse(await i.files[0].text());let k=0;
   for(const n of d.items){const o=S.items.find(x=>x.id==n.id);if(!o){S.items.push(n);S.base[n.id]=n.updatedAt;k++}else if(n.updatedAt>o.updatedAt){Object.assign(o,n);S.base[n.id]=n.updatedAt;k++}}
   await save();render();alert(k+' item(ns) novos ou atualizados.')}catch(err){alert('Arquivo de backup inválido.')}};i.click()};
+let B=null,nav=[];
+const esc=t=>String(t).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
+function goBack(){if(nav.length)openB(nav.pop());else{show('list');render()}}
+function openB(id){B=S.items.find(i=>i.id==id);B.cards=B.cards||[];show('board');$('#bn').value=B.title;drawB()}
+const tb=()=>{B.updatedAt=Date.now();save()};
+function drawB(){$('#cv').innerHTML=B.cards.map(c=>{
+ const r=c.ref&&S.items.find(i=>i.id==c.ref),g=c.kind=='g';
+ const body=c.kind=='ref'?`<div style="padding:10px"><b>${r?esc(r.title||'Sem título'):'(item apagado)'}</b><small style="display:block;color:var(--mut)">${r?T[r.type]:''}</small>${r?`<button data-o="${c.id}" style="margin-top:8px">Abrir</button>`:''}</div>`
+  :`<textarea data-t="${c.id}" placeholder="${g?'Nome do grupo':'Escreva aqui'}">${esc(c.text||'')}</textarea>`;
+ return `<div class="cd${g?' g':''}" data-id="${c.id}" style="left:${c.x}px;top:${c.y}px"><div class="hd" data-d="${c.id}"><span>${g?'Grupo':c.kind=='ref'?'Do universo':'Nota'}</span><button data-x="${c.id}">×</button></div>${body}</div>`}).join('')}
+const addC=(kind,ref)=>{const s=$('#sc'),n=B.cards.length%6*24;B.cards.push({id:uid(),kind,ref,text:'',x:s.scrollLeft+30+n,y:s.scrollTop+30+n});tb();drawB()};
+$('#cv').addEventListener('input',e=>{const id=e.target.dataset.t;if(id){B.cards.find(c=>c.id==id).text=e.target.value;tb()}});
+$('#cv').addEventListener('click',e=>{const d=e.target.dataset;
+ if(d.x){B.cards=B.cards.filter(c=>c.id!=d.x);tb();drawB()}
+ if(d.o){const c=B.cards.find(c=>c.id==d.o);nav.push(B.id);open(c.ref)}});
+$('#cv').addEventListener('pointerdown',e=>{const h=e.target.closest('.hd');if(!h||e.target.dataset.x)return;
+ const c=B.cards.find(c=>c.id==h.dataset.d);let kids=[];
+ if(c.kind=='g')kids=B.cards.filter(k=>k!==c&&k.kind!='g'&&k.x+110>c.x&&k.x+110<c.x+440&&k.y+60>c.y&&k.y+60<c.y+320);
+ const sx=e.clientX,sy=e.clientY,o=[c,...kids].map(k=>[k,k.x,k.y]);
+ h.setPointerCapture(e.pointerId);
+ h.onpointermove=m=>o.forEach(([k,x,y])=>{k.x=Math.max(0,x+m.clientX-sx);k.y=Math.max(0,y+m.clientY-sy);const n=$('#cv').querySelector(`[data-id="${k.id}"]`);n.style.left=k.x+'px';n.style.top=k.y+'px'});
+ h.onpointerup=()=>{h.onpointermove=h.onpointerup=null;tb()}});
+$('#bnota').onclick=()=>addC('nota');$('#bgrupo').onclick=()=>addC('g');
+$('#bref').onclick=()=>{$('#pl').innerHTML=S.items.filter(i=>i!==B).map(i=>`<button class="item" data-p="${i.id}">${esc(i.title||'Sem título')}<small>${T[i.type]}</small></button>`).join('')||'<p>A biblioteca ainda está vazia.</p>';$('#dPick').showModal()};
+$('#pl').onclick=e=>{const b=e.target.closest('.item');if(b){$('#dPick').close();addC('ref',b.dataset.p)}};
+$('#pc').onclick=()=>$('#dPick').close();
+$('#bn').oninput=e=>{B.title=e.target.value;tb()};
+$('#bback').onclick=()=>goBack();
+$('#bdel').onclick=()=>{if(confirm('Apagar este quadro?')){S.items=S.items.filter(i=>i!==B);save();goBack()}};
 addEventListener('beforeunload',e=>{if(pend()[0]+pend()[1]){e.preventDefault();e.returnValue=''}});
 get('s').then(v=>{if(v)S=v;render()});
 if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js');
