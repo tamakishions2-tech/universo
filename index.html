@@ -45,6 +45,9 @@ img.pv{max-width:100%;border-radius:8px}audio{width:100%}
 .cd textarea,.cd.g textarea{min-height:0;height:100%;resize:none}
 .hd span{flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .rz{position:absolute;right:0;bottom:0;width:30px;height:30px;touch-action:none;cursor:nwse-resize;background:linear-gradient(135deg,transparent 55%,var(--mut) 55%,var(--mut) 62%,transparent 62%,transparent 75%,var(--mut) 75%,var(--mut) 82%,transparent 82%);opacity:.7}
+.irow{display:flex;gap:8px;align-items:stretch;margin:8px 0}
+.irow .item{margin:0;flex:1;width:auto}
+.irow .bad{min-width:76px;height:auto}
 </style></head><body>
 <header><h1>Universo</h1><button id="imp">Importar backup</button><button id="sair">Sair</button></header>
 <main>
@@ -95,7 +98,7 @@ function render(){
  const q=$('#q').value.toLowerCase();
  $('#chips').innerHTML=['todos',...Object.keys(T)].map(k=>`<button class="${k===flt?'on':''}" data-f="${k}">${k=='todos'?'Todos':T[k]}</button>`).join('');
  const L=S.items.filter(i=>(flt=='todos'||i.type==flt)&&(i.title+i.text+i.tags).toLowerCase().includes(q));
- $('#items').innerHTML=L.length?L.map(i=>`<button class="item" data-id="${i.id}">${dirty(i)?'<span class="dot">● </span>':''}${i.title||'Sem título'}<small>${T[i.type]}${i.tags?' · '+i.tags:''}</small></button>`).join(''):'<div class="empty">Nada aqui ainda. Adicione sua primeira nota ou importe um arquivo Word.</div>';
+ $('#items').innerHTML=L.length?L.map(i=>`<div class="irow"><button class="item" data-id="${i.id}">${dirty(i)?'<span class="dot">● </span>':''}${esc(i.title||'Sem título')}<small>${T[i.type]}${i.tags?' · '+esc(i.tags):''}</small></button><button class="bad" data-del="${i.id}" aria-label="Apagar">Apagar</button></div>`).join(''):'<div class="empty">Nada aqui ainda. Adicione sua primeira nota ou importe um arquivo Word.</div>';
 }
 function open(id){
  const it=S.items.find(i=>i.id==id);if(it.type=='quadro')return openB(id);
@@ -109,7 +112,9 @@ $('#back').onclick=()=>goBack();
 $('#del').onclick=()=>{if(confirm('Apagar este item?')){S.items=S.items.filter(i=>i!==cur);save();goBack()}};
 $('#q').oninput=render;
 $('#chips').onclick=e=>{if(e.target.dataset.f){flt=e.target.dataset.f;render()}};
-$('#items').onclick=e=>{const b=e.target.closest('.item');if(b)open(b.dataset.id)};
+$('#items').onclick=e=>{const d=e.target.closest('[data-del]');
+ if(d){const it=S.items.find(i=>i.id==d.dataset.del);if(it&&confirm('Apagar "'+(it.title||'Sem título')+'"?')){S.items=S.items.filter(i=>i!==it);save();render()}return}
+ const b=e.target.closest('.item');if(b)open(b.dataset.id)};
 $('#add').onclick=()=>$('#dAdd').showModal();$('#c1').onclick=()=>$('#dAdd').close();
 const ACC={doc:'.docx',img:'image/*',audio:'audio/*'};let kind,inB=false;
 $('#dAdd').onclick=e=>{const a=e.target.dataset.a;if(!a)return;$('#dAdd').close();
